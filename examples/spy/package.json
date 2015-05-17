@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "buffer-equal": "0.0.1",
+    "buffertools": "^2.1.2"
+  }
+}
