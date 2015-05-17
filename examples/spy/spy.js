@@ -1,5 +1,5 @@
 
-var mc = require('../../src');
+var mc = require('../../src/index.js');
 
 var states = mc.protocol.states;
 function printHelpAndExit(exitCode) {
@@ -76,27 +76,50 @@ if(host.indexOf(':') != -1) {
   host = host.substring(0, host.indexOf(':'));
 }
 
-var srv = mc.createServer({
-  'online-mode': false,
-  port: 25566
+
+srv_opts = {
+	'online-mode': false,
+	port: 25566
+}
+
+slog = null;
+clog = null;
+tlog = null;
+
+var srv = mc.createServer(srv_opts);
+
+srv.on('listening', function(client) {
+	slog = function(s) {
+		console.log("spy-"+srv_opts.port+": "+s);
+	}
+	slog("listening");
 });
+
+srv.on('connection', function(client) {
+	clog = function(s) {
+		//console.log(client.socket.remoteAddress+": "+s);
+		console.log(">>--->   "+s);
+	}
+	clog("connect");
+});
+
 srv.on('login', function(client) {
-  var addr = client.socket.remoteAddress;
-  console.log('Incoming connection', '(' + addr + ')');
+  clog("login");
   var endedClient = false;
   var endedTargetClient = false;
   client.on('end', function() {
     endedClient = true;
-    console.log('Connection closed by client', '(' + addr + ')');
+    clog('end');
     if(!endedTargetClient)
       targetClient.end("End");
   });
   client.on('error', function() {
     endedClient = true;
-    console.log('Connection error by client', '(' + addr + ')');
+    clog('error');
     if(!endedTargetClient)
       targetClient.end("Error");
   });
+
   var targetClient = mc.createClient({
     host: host,
     port: port,
@@ -104,13 +127,17 @@ srv.on('login', function(client) {
     password: passwd,
     'online-mode': passwd != null ? true : false
   });
+
+	tlog = function(s) {
+		console.log("  <---<< "+s);
+	}
+
   var brokenPackets = [/*0x04, 0x2f, 0x30*/];
+
   client.on('packet', function(packet) {
     if(targetClient.state == states.PLAY && packet.state == states.PLAY) {
       if(shouldDump(packet.id, "o")) {
-        console.log("client->server:",
-          client.state + ".0x" + packet.id.toString(16) + " :",
-          JSON.stringify(packet));
+        clog(client.state + ".0x" + packet.id.toString(16) + " :" + JSON.stringify(packet));
       }
       if(!endedTargetClient)
         targetClient.write(packet.id, packet);
@@ -120,9 +147,7 @@ srv.on('login', function(client) {
     if(packet.state == states.PLAY && client.state == states.PLAY &&
       brokenPackets.indexOf(packet.id) === -1) {
       if(shouldDump(packet.id, "i")) {
-        console.log("client<-server:",
-          targetClient.state + ".0x" + packet.id.toString(16) + " :",
-          (packet.id != 38 ? JSON.stringify(packet) : "Packet too big"));
+        tlog(targetClient.state + ".0x" + packet.id.toString(16) + " :" + (packet.id != 38 ? JSON.stringify(packet) : "Packet too big"));
       }
       if(!endedClient)
         client.write(packet.id, packet);
@@ -138,9 +163,9 @@ srv.on('login', function(client) {
     var packetData = mc.protocol.parsePacketData(buffer, state, false, {"packet": 1}).results;
     var packetBuff = mc.protocol.createPacketBuffer(packetData.id, packetData.state, packetData, true);
     if(buffertools.compare(buffer, packetBuff) != 0) {
-      console.log("client<-server: Error in packetId " + state + ".0x" + packetId.value.toString(16));
-      console.log(buffer.toString('hex'));
-      console.log(packetBuff.toString('hex'));
+      tlog("in packetId " + state + ".0x" + packetId.value.toString(16));
+      tlog(buffer.toString('hex'));
+      tlog(packetBuff.toString('hex'));
     }
     /*if (client.state == states.PLAY && brokenPackets.indexOf(packetId.value) !== -1)
      {
@@ -157,20 +182,20 @@ srv.on('login', function(client) {
     var packetData = mc.protocol.parsePacketData(buffer, state, true, {"packet": 1}).results;
     var packetBuff = mc.protocol.createPacketBuffer(packetData.id, packetData.state, packetData, false);
     if(buffertools.compare(buffer, packetBuff) != 0) {
-      console.log("client->server: Error in packetId " + state + ".0x" + packetId.value.toString(16));
-      console.log(buffer.toString('hex'));
-      console.log(packetBuff.toString('hex'));
+      clog("Error in packetId " + state + ".0x" + packetId.value.toString(16));
+      clog(buffer.toString('hex'));
+      clog(packetBuff.toString('hex'));
     }
   });
   targetClient.on('end', function() {
     endedTargetClient = true;
-    console.log('Connection closed by server', '(' + addr + ')');
+    tlog('end');
     if(!endedClient)
       client.end("End");
   });
   targetClient.on('error', function() {
     endedTargetClient = true;
-    console.log('Connection error by server', '(' + addr + ')');
+    tlog('error');
     if(!endedClient)
       client.end("Error");
   });
