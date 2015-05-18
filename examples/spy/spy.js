@@ -77,6 +77,10 @@ if(host.indexOf(':') != -1) {
 }
 
 
+//--dump 0x01 --dump i0x07 --dump 0x09 --dump 0x0d --dump o0x0e --dump x0f --dump o0x15 --dump o0x16 --dump o0x17 --dump o0x19 --dump i0x21 --dump i0x26 --dump i0x2b --dump i0x2d --dump i0x2e --dump i0x2f --dump i0x30 --dump i0x32 --dump i0x33 --dump i0x36 --dump i0x37 --dump i0x3f --dump i0x40 --dump i0x41 --dump i0x42 --dump i0x44 --dump i0x46  --dump i0x48
+
+
+
 srv_opts = {
 	'online-mode': false,
 	port: 25566
@@ -133,11 +137,14 @@ srv.on('login', function(client) {
 	}
 
   var brokenPackets = [/*0x04, 0x2f, 0x30*/];
+  var pktNames = mc.protocol.packetNames;
 
   client.on('packet', function(packet) {
     if(targetClient.state == states.PLAY && packet.state == states.PLAY) {
       if(shouldDump(packet.id, "o")) {
-        clog(client.state + ".0x" + packet.id.toString(16) + " :" + JSON.stringify(packet));
+	  	var x = pktNames[states.PLAY]["toServer"][packet.id];
+      	var p = "0x"+packet.id.toString(16);
+        clog(x+":"+p+" P "); // + JSON.stringify(packet));
       }
       if(!endedTargetClient)
         targetClient.write(packet.id, packet);
@@ -147,7 +154,10 @@ srv.on('login', function(client) {
     if(packet.state == states.PLAY && client.state == states.PLAY &&
       brokenPackets.indexOf(packet.id) === -1) {
       if(shouldDump(packet.id, "i")) {
-        tlog(targetClient.state + ".0x" + packet.id.toString(16) + " :" + (packet.id != 38 ? JSON.stringify(packet) : "Packet too big"));
+	  	var x = pktNames[states.PLAY]["toClient"][packet.id];
+      	var p = "0x"+packet.id.toString(16);
+        //tlog(targetClient.state + " "+x+" :" + packet.id.toString(16) + " :" + (packet.id != 38 ? JSON.stringify(packet) : "Packet too big"));
+        tlog(x+":"+p+" P "); // + JSON.stringify(packet));
       }
       if(!endedClient)
         client.write(packet.id, packet);
