@@ -1,4 +1,5 @@
-var mc = require('../../');
+//var mc = require('../../');
+var mc = require('../../src/index.js');
 
 var states = mc.protocol.states;
 function printHelpAndExit(exitCode) {
@@ -35,7 +36,7 @@ process.argv.forEach(function(val, index, array) {
 
 var args = process.argv.slice(2);
 var host;
-var port = 25565;
+var port = 30000;
 var user;
 var passwd;
 
@@ -55,7 +56,10 @@ var printIdBlacklist = {};
     var prefix = match[1];
     if(prefix === "") prefix = "io";
     var number = parseInt(match[2]);
-    if(isNaN(number)) printHelpAndExit(1);
+    if(isNaN(number)) {
+		console.log("NaN: "+match[2]);
+		  process.exit(1);
+	}
     if(option == "--dump") {
       printIdWhitelist[number] = prefix;
     } else if(option == "-x") {

@@ -1,30 +1,33 @@
 
+
+require("g")("log5");
+
 var mc = require('../../src/index.js');
 
 var states = mc.protocol.states;
 function printHelpAndExit(exitCode) {
-  console.log("usage: node proxy.js [<options>...] <target_srv> <user> [<password>]");
-  console.log("options:");
-  console.log("  --dump ID");
-  console.log("    print to stdout messages with the specified ID.");
-  console.log("  --dump-all");
-  console.log("    print to stdout all messages, except those specified with -x.");
-  console.log("  -x ID");
-  console.log("    do not print messages with this ID.");
-  console.log("  ID");
-  console.log("    an integer in decimal or hex (given to JavaScript's parseInt())");
-  console.log("    optionally prefixed with o for client->server or i for client<-server.");
-  console.log("examples:");
-  console.log("  node proxy.js --dump-all -x 0x0 -x 0x3 -x 0x12 -x 0x015 -x 0x16 -x 0x17 -x 0x18 -x 0x19 localhost Player");
-  console.log("    print all messages except for some of the most prolific.");
-  console.log("  node examples/proxy.js --dump i0x2d --dump i0x2e --dump i0x2f dump i0x30 --dump i0x31 --dump i0x32 --dump o0x0d --dump o0x0e --dump o0x0f --dump o0x10 --dump o0x11 localhost Player");
-  console.log("    print messages relating to inventory management.");
+  I("usage: node proxy.js [<options>...] <target_srv> <user> [<password>]");
+  I("options:");
+  I("  --dump ID");
+  I("    print to stdout messages with the specified ID.");
+  I("  --dump-all");
+  I("    print to stdout all messages, except those specified with -x.");
+  I("  -x ID");
+  I("    do not print messages with this ID.");
+  I("  ID");
+  I("    an integer in decimal or hex (given to JavaScript's parseInt())");
+  I("    optionally prefixed with o for client->server or i for client<-server.");
+  I("examples:");
+  I("  node proxy.js --dump-all -x 0x0 -x 0x3 -x 0x12 -x 0x015 -x 0x16 -x 0x17 -x 0x18 -x 0x19 localhost Player");
+  I("    print all messages except for some of the most prolific.");
+  I("  node examples/proxy.js --dump i0x2d --dump i0x2e --dump i0x2f dump i0x30 --dump i0x31 --dump i0x32 --dump o0x0d --dump o0x0e --dump o0x0f --dump o0x10 --dump o0x11 localhost Player");
+  I("    print messages relating to inventory management.");
 
   process.exit(exitCode);
 }
 
 if(process.argv.length < 4) {
-  console.log("Too few arguments!");
+  I("Too few arguments!");
   printHelpAndExit(1);
 }
 
@@ -95,121 +98,112 @@ var srv = mc.createServer(srv_opts);
 
 srv.on('listening', function(client) {
 	slog = function(s) {
-		console.log("spy-"+srv_opts.port+": "+s);
+		I("spy-"+srv_opts.port+": "+s);
 	}
 	slog("listening");
 });
 
 srv.on('connection', function(client) {
 	clog = function(s) {
-		//console.log(client.socket.remoteAddress+": "+s);
-		console.log(">>--->   "+s);
+		I(">>--->   "+s);
 	}
-	clog("connect");
+	clog("connect from "+client.socket.remoteAddress);
 });
 
 srv.on('login', function(client) {
   clog("login");
+
+  var pktNames = mc.protocol.packetNames;
+
   var endedClient = false;
-  var endedTargetClient = false;
+  var endedtargetClient = false;
+
+  var targetClient = null;
+
+	tlog = function(s) {
+		I("  <---<< "+s);
+	}
+
+
+	client.on("session", function() {
+		clog("session: "+JSON.stringify(client.session));
+	});
+
   client.on('end', function() {
     endedClient = true;
     clog('end');
-    if(!endedTargetClient)
+    if(!endedtargetClient)
       targetClient.end("End");
   });
+
   client.on('error', function() {
     endedClient = true;
     clog('error');
-    if(!endedTargetClient)
+    if(!endedtargetClient)
       targetClient.end("Error");
   });
-
-  var targetClient = mc.createClient({
-    host: host,
-    port: port,
-    username: user,
-    password: passwd,
-    'online-mode': passwd != null ? true : false
-  });
-
-	tlog = function(s) {
-		console.log("  <---<< "+s);
-	}
-
-  var brokenPackets = [/*0x04, 0x2f, 0x30*/];
-  var pktNames = mc.protocol.packetNames;
 
   client.on('packet', function(packet) {
     if(targetClient.state == states.PLAY && packet.state == states.PLAY) {
       if(shouldDump(packet.id, "o")) {
 	  	var x = pktNames[states.PLAY]["toServer"][packet.id];
       	var p = "0x"+packet.id.toString(16);
-        clog(x+":"+p+" P "); // + JSON.stringify(packet));
+        clog(x+":"+p+" P " + JSON.stringify(packet));
       }
-      if(!endedTargetClient)
+      if(!endedtargetClient)
         targetClient.write(packet.id, packet);
+			if(packet.id == 1) {
+				if(packet.message == "go") {
+					I("*** GOING ***");
+				}
+			}
     }
   });
-  targetClient.on('packet', function(packet) {
-    if(packet.state == states.PLAY && client.state == states.PLAY &&
-      brokenPackets.indexOf(packet.id) === -1) {
-      if(shouldDump(packet.id, "i")) {
-	  	var x = pktNames[states.PLAY]["toClient"][packet.id];
-      	var p = "0x"+packet.id.toString(16);
-        //tlog(targetClient.state + " "+x+" :" + packet.id.toString(16) + " :" + (packet.id != 38 ? JSON.stringify(packet) : "Packet too big"));
-        tlog(x+":"+p+" P "); // + JSON.stringify(packet));
-      }
-      if(!endedClient)
-        client.write(packet.id, packet);
-      if (packet.id === 0x46) // Set compression
-        client.compressionThreshold = packet.threshold;
-    }
-  });
-  var buffertools = require('buffertools');
-  targetClient.on('raw', function(buffer, state) {
-    if(client.state != states.PLAY || state != states.PLAY)
-      return;
-    var packetId = mc.protocol.types.varint[0](buffer, 0);
-    var packetData = mc.protocol.parsePacketData(buffer, state, false, {"packet": 1}).results;
-    var packetBuff = mc.protocol.createPacketBuffer(packetData.id, packetData.state, packetData, true);
-    if(buffertools.compare(buffer, packetBuff) != 0) {
-      tlog("in packetId " + state + ".0x" + packetId.value.toString(16));
-      tlog(buffer.toString('hex'));
-      tlog(packetBuff.toString('hex'));
-    }
-    /*if (client.state == states.PLAY && brokenPackets.indexOf(packetId.value) !== -1)
-     {
-     console.log(`client<-server: raw packet);
-     console.log(packetData);
-     if (!endedClient)
-     client.writeRaw(buffer);
-     }*/
-  });
-  client.on('raw', function(buffer, state) {
-    if(state != states.PLAY || targetClient.state != states.PLAY)
-      return;
-    var packetId = mc.protocol.types.varint[0](buffer, 0);
-    var packetData = mc.protocol.parsePacketData(buffer, state, true, {"packet": 1}).results;
-    var packetBuff = mc.protocol.createPacketBuffer(packetData.id, packetData.state, packetData, false);
-    if(buffertools.compare(buffer, packetBuff) != 0) {
-      clog("Error in packetId " + state + ".0x" + packetId.value.toString(16));
-      clog(buffer.toString('hex'));
-      clog(packetBuff.toString('hex'));
-    }
-  });
-  targetClient.on('end', function() {
-    endedTargetClient = true;
-    tlog('end');
-    if(!endedClient)
-      client.end("End");
-  });
-  targetClient.on('error', function() {
-    endedTargetClient = true;
-    tlog('error');
-    if(!endedClient)
-      client.end("Error");
-  });
+
+
+	var openTarget = function(h, p, u, p) {
+		if(targetClient && !endedtargetClient)
+		  targetClient.end("Error");
+	  endedtargetClient = false;
+	  targetClient = mc.createClient({
+		host: h,
+		port: p,
+		username: u,
+		password: p,
+		'online-mode': p != null ? true : false
+	  });
+
+		targetClient.on('packet', function(packet) {
+			if(packet.state == states.PLAY && client.state == states.PLAY) {
+				if(shouldDump(packet.id, "i")) {
+				var x = pktNames[states.PLAY]["toClient"][packet.id];
+					var p = "0x"+packet.id.toString(16);
+					tlog(x+":"+p+" P " + JSON.stringify(packet));
+				}
+				if(!endedClient)
+					client.write(packet.id, packet);
+				if (packet.id === 0x46) // Set compression
+					client.compressionThreshold = packet.threshold;
+			}
+		});
+
+		targetClient.on('end', function() {
+			endedtargetClient = true;
+			tlog('end');
+			if(!endedClient)
+				client.end("End");
+		});
+
+		targetClient.on('error', function() {
+			endedtargetClient = true;
+			tlog('error');
+			if(!endedClient)
+				client.end("Error");
+		});
+	}
+
+	openTarget(host, port, user, passwd);
+
 });
 
 function shouldDump(id, direction) {
