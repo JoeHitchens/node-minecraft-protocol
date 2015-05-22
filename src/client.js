@@ -156,7 +156,12 @@ Client.prototype.end = function(reason) {
   this.socket.end();
 };
 
-Client.prototype.write = function(packetId, params) {
+function noop(err) {
+  if(err) throw err;
+}
+
+Client.prototype.write = function(packetId, params, cb) {
+  cb = cb || noop;
   if(Array.isArray(packetId)) {
     if(packetId[0] !== this.state)
       return false;
@@ -175,9 +180,9 @@ Client.prototype.write = function(packetId, params) {
     debug("writing packetId " + that.state + "." + packetName + " (0x" + packetId.toString(16) + ")");
     debug(params);
     var out = that.encryptionEnabled ? new Buffer(that.cipher.update(buffer), 'binary') : buffer;
-    that.socket.write(out);
+    that.socket.write(out,cb);
     return true;
-  }
+  };
 
   var buffer = createPacketBuffer(packetId, this.state, params, this.isServer);
   if(this.compressionThreshold >= 0 && buffer.length >= this.compressionThreshold) {
@@ -185,7 +190,7 @@ Client.prototype.write = function(packetId, params) {
     compressPacketBuffer(buffer, finishWriting);
   } else if(this.compressionThreshold >= -1) {
     debug("New-styling packet");
-    newStylePacket(buffer, finishWriting);
+    newStylePacket(buffer, 0, finishWriting);
   } else {
     debug("Old-styling packet");
     oldStylePacket(buffer, finishWriting);
@@ -207,7 +212,7 @@ Client.prototype.writeRaw = function(buffer) {
   if(this.compressionThreshold >= 0 && buffer.length >= this.compressionThreshold) {
     compressPacketBuffer(buffer, finishWriting);
   } else if(this.compressionThreshold >= -1) {
-    newStylePacket(buffer, finishWriting);
+    newStylePacket(buffer, 0, finishWriting);
   } else {
     oldStylePacket(buffer, finishWriting);
   }

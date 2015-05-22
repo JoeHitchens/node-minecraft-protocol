@@ -125,8 +125,11 @@ function createServer(options) {
       }
 
       client.once([states.STATUS, 0x01], function(packet) {
-        client.write(0x01, {time: packet.time});
-        client.end();
+        client.write(0x01, {time: packet.time},function(err){
+          if(err)
+            throw err;
+          client.end();
+        });
       });
       client.write(0x00, {response: JSON.stringify(response)});
     }
@@ -214,19 +217,22 @@ function createServer(options) {
       }
       //client.write('compress', { threshold: 256 }); // Default threshold is 256
       //client.compressionThreshold = 256;
-      client.write(0x02, {uuid: client.uuid, username: client.username});
-      client.state = states.PLAY;
-      loggedIn = true;
-      startKeepAlive();
+      client.write(0x02, {uuid: client.uuid, username: client.username},function(err){
+        if(err)
+          throw err;
+        client.state = states.PLAY;
+        loggedIn = true;
+        startKeepAlive();
 
-      clearTimeout(loginKickTimer);
-      loginKickTimer = null;
+        clearTimeout(loginKickTimer);
+        loginKickTimer = null;
 
-      server.playerCount += 1;
-      client.once('end', function() {
-        server.playerCount -= 1;
+        server.playerCount += 1;
+        client.once('end', function() {
+          server.playerCount -= 1;
+        });
+        server.emit('login', client);
       });
-      server.emit('login', client);
     }
   });
   server.listen(port, host);
@@ -281,8 +287,8 @@ function createClient(options) {
       }
     };
 
-    if(accessToken != null) getSession(options.username, accessToken, options.clientToken, true, cb);
-    else getSession(options.username, options.password, options.clientToken, false, cb);
+    if(accessToken != null) getSession(options.username, accessToken, clientToken, true, cb);
+    else getSession(options.username, options.password, clientToken, false, cb);
   } else {
     // assume the server is in offline mode and just go for it.
     client.username = options.username;
@@ -297,11 +303,13 @@ function createClient(options) {
       serverHost: host,
       serverPort: port,
       nextState: 2
-    });
-
-    client.state = states.LOGIN;
-    client.write(0x00, {
-      username: client.username
+    },function(err){
+      if(err)
+        throw err;
+      client.state = states.LOGIN;
+      client.write(0x00, {
+        username: client.username
+      });
     });
   }
 
@@ -362,8 +370,11 @@ function createClient(options) {
         client.write(0x01, {
           sharedSecret: encryptedSharedSecretBuffer,
           verifyToken: encryptedVerifyTokenBuffer,
+        },function(err){
+          if(err)
+            throw err;
+          client.encryptionEnabled = true;
         });
-        client.encryptionEnabled = true;
       }
     }
   }
